@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1f5d4c">
+<title>Aktiekoll</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one ledger column; summary strip, then one section per ISK account, activity log last */
+:root{
+  --bg:#f3f5f4; --surface:#ffffff; --fg:#14201c; --muted:#5b6b65; --line:#d8dfdc;
+  --accent:#1f5d4c; --accent-fg:#ffffff; --up:#13804f; --down:#c2364a; --chip:#e7eeeb;
+  --display:"Familjen Grotesk","Helvetica Neue",Arial,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0d1412; --surface:#141d1a; --fg:#e4ece9; --muted:#8fa29b; --line:#25332e;
+  --accent:#5fc3a2; --accent-fg:#0b1310; --up:#4fd18e; --down:#ff7083; --chip:#1c2925; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d1412; --surface:#141d1a; --fg:#e4ece9; --muted:#8fa29b; --line:#25332e;
+  --accent:#5fc3a2; --accent-fg:#0b1310; --up:#4fd18e; --down:#ff7083; --chip:#1c2925; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 60px}
+.wrap{max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+h1,h2{font-family:var(--display);margin:0;text-wrap:balance}
+h1{font-size:30px;font-weight:700;letter-spacing:-.01em}
+h2{font-size:20px;font-weight:600}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.up{color:var(--up)} .down{color:var(--down)}
+.muted{color:var(--muted)}
+.label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+header p{margin:4px 0 0;color:var(--muted);max-width:60ch}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:8px 12px}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
+button.small{padding:5px 10px;font-size:13px}
+button.danger{color:var(--down)}
+.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.summary>div{background:var(--surface);padding:14px 16px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.summary .big{font-size:20px;font-weight:500}
+.acct{display:flex;flex-direction:column;gap:10px}
+.acct-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.acct-head .totals{font-size:13px;color:var(--muted)}
+.table{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.row{display:grid;grid-template-columns:minmax(0,1.6fr) repeat(4,minmax(0,1fr)) 32px;gap:8px;align-items:center;padding:12px 14px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row.head{padding-block:8px;background:var(--chip)}
+.row.head span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.row .r{text-align:right}
+.row.item{cursor:pointer}
+.row.item:hover{background:var(--chip)}
+.name{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.chev{color:var(--muted);text-align:right}
+.mlabel{display:none}
+.tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:999px;background:var(--chip);color:var(--muted);font-family:var(--mono)}
+.log{display:flex;flex-direction:column}
+.log div{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+.log div span:first-child{min-width:0}
+.note{font-size:13px;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:14px}
+.empty{padding:28px 16px;text-align:center;color:var(--muted)}
+/* sheet */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:10;
+  padding:0 max(0px,env(safe-area-inset-right,0px)) 0 max(0px,env(safe-area-inset-left,0px))}
+.sheet{background:var(--surface);color:var(--fg);width:100%;max-width:520px;border-radius:16px 16px 0 0;padding:20px max(16px,env(safe-area-inset-left,0px)) calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px;max-height:90%;overflow:auto}
+@media (min-width:640px){.scrim{align-items:center}.sheet{border-radius:16px}}
+.sheet h3{font-family:var(--display);font-size:20px;margin:0}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:13px;color:var(--muted)}
+input,select{font:inherit;font-family:var(--mono);padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btns.end{justify-content:flex-end}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px}
+.stats div{display:flex;flex-direction:column;gap:2px}
+.preview{font-size:13px;background:var(--chip);border-radius:8px;padding:10px 12px}
+.err{color:var(--down);font-size:13px}
+@media (max-width:640px){
+  .summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .row.head{display:none}
+  .row{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px}
+  .row .name-cell{grid-column:1/-1;display:flex;justify-content:space-between;gap:8px}
+  .row .r{text-align:left}
+  .mlabel{display:block;font-size:11px;color:var(--muted);font-family:var(--body)}
+  .chev{display:none}
+}
+@media (prefers-reduced-motion:no-preference){.row.item{transition:background .12s}}
+</style>
+<style>
+.authbox{max-width:380px;margin:8vh auto 0;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:14px}
+.authbox p{margin:0;color:var(--muted);font-size:14px}
+.linkbtn{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;font-size:14px}
+.ok{color:var(--up);font-size:13px}
+.topbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+</style>
+</head>
+<body>
+
+<div class="wrap" id="authView" hidden>
+  <div class="authbox">
+    <h1>Aktiekoll</h1>
+    <p id="authIntro">Log in to see your holdings.</p>
+    <form id="authForm" style="display:flex;flex-direction:column;gap:12px">
+      <div class="field"><label for="em">Email</label><input id="em" type="email" autocomplete="email" required></div>
+      <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" minlength="6" required></div>
+      <button class="primary" type="submit" id="authSubmit">Log in</button>
+    </form>
+    <div class="err" id="authErr"></div><div class="ok" id="authOk"></div>
+    <button class="linkbtn" type="button" id="authSwitch">First time here? Create your account</button>
+  </div>
+</div>
+
+<div class="wrap" id="appView" hidden>
+  <header>
+    <div>
+      <h1>Aktiekoll</h1>
+      <p>Money in versus what it's worth now, per holding. "Growth" ignores new buys, so topping up never makes a stock look better or worse than it actually moved.</p>
+    </div>
+    <div class="topbar">
+      <button class="primary" id="addBtn" type="button">Add holding</button>
+      <button class="small" id="logoutBtn" type="button">Log out</button>
+    </div>
+  </header>
+  <section class="summary" id="summary" aria-label="Totals"></section>
+  <div id="accounts"></div>
+  <section id="logWrap" hidden>
+    <h2>Activity</h2>
+    <div class="log" id="log"></div>
+  </section>
+  <p class="note" id="status" hidden></p>
+</div>
+
+<div id="sheetRoot"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+const sb = supabase.createClient("https://ilcwxstkuuyydnskobll.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlsY3d4c3RrdXV5eWRuc2tvYmxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxNTU3NTksImV4cCI6MjA3NTczMTc1OX0.mAPgvzw37hJIC7dG5D5W5-xomtGsZGc6nXPXtzRlUd4",
+  {auth:{persistSession:true,autoRefreshToken:true}});
+
+const ACCT_ORDER = ["SAFE NET","All in or nothing","Veronica"];
+let holdings={}, events=[], uid=null;
+
+const kr = n => (Math.round(n)).toLocaleString("sv-SE").replace(/−/g,"-") + " kr";
+const krS = n => (n>0?"+":"") + kr(n);
+const pc = x => (x>0?"+":"") + (x*100).toFixed(2).replace(".",",") + " %";
+const cls = x => x>0.00001 ? "up" : x<-0.00001 ? "down" : "";
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const parseKr = v => { const n = Number(String(v).replace(/\s|kr/g,"").replace(",",".")); return isFinite(n) ? n : NaN; };
+const slug = s => s.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40) || "h";
+const today = () => new Date().toLocaleDateString("sv-SE");
+const fromRow = r => ({id:r.id,account:r.account,name:r.name,ccy:r.ccy,invested:+r.invested,value:+r.value,lastValue:+r.last_value,twr:+r.twr,realized:+r.realized,since:r.since,updated:r.updated});
+const toRow = h => ({user_id:uid,id:h.id,account:h.account,name:h.name,ccy:h.ccy||null,invested:h.invested,value:h.value,last_value:h.lastValue,twr:h.twr,realized:h.realized||0,since:h.since||today(),updated:today()});
+
+function derive(h){
+  const gain = h.value - h.invested;
+  return { gain, gainPct: h.invested>0 ? gain/h.invested : 0,
+    growth: (h.twr||1) * (h.lastValue>0 ? h.value/h.lastValue : 1) - 1 };
+}
+
+/* ---------- auth ---------- */
+let signUpMode=false;
+const authView=document.getElementById("authView"), appView=document.getElementById("appView");
+function setMode(su){
+  signUpMode=su;
+  document.getElementById("authSubmit").textContent = su ? "Create account" : "Log in";
+  document.getElementById("authSwitch").textContent = su ? "Already have an account? Log in" : "First time here? Create your account";
+  document.getElementById("authIntro").textContent = su ? "Create your account. The first account made here gets your starting portfolio." : "Log in to see your holdings.";
+  document.getElementById("pw").autocomplete = su ? "new-password" : "current-password";
+  document.getElementById("authErr").textContent=""; document.getElementById("authOk").textContent="";
+}
+document.getElementById("authSwitch").onclick=()=>setMode(!signUpMode);
+document.getElementById("authForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const email=document.getElementById("em").value.trim(), password=document.getElementById("pw").value;
+  const err=document.getElementById("authErr"), ok=document.getElementById("authOk"), btn=document.getElementById("authSubmit");
+  err.textContent=""; ok.textContent=""; btn.disabled=true;
+  try{
+    if(signUpMode){
+      const {data,error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:location.origin}});
+      if(error) throw error;
+      if(data.session){ await start(data.session); }
+      else { ok.textContent="Account created. Check your email and tap the confirmation link, then come back here and log in."; setMode(false); document.getElementById("authOk").textContent="Account created. Check your email and tap the confirmation link, then come back here and log in."; }
+    } else {
+      const {data,error}=await sb.auth.signInWithPassword({email,password});
+      if(error) throw error;
+      await start(data.session);
+    }
+  }catch(ex){
+    const m=ex.message||"";
+    err.textContent = /confirm/i.test(m) ? "Confirm your email first: tap the link Supabase sent you, then log in again."
+      : /Invalid login/i.test(m) ? "Wrong email or password." : (m || "Something went wrong. Try again.");
+  }finally{ btn.disabled=false; }
+});
+document.getElementById("logoutBtn").onclick=async()=>{ await sb.auth.signOut(); holdings={}; events=[]; showAuth(); };
+function showAuth(){ appView.hidden=true; authView.hidden=false; }
+
+async function start(session){
+  uid=session.user.id;
+  authView.hidden=true; appView.hidden=false;
+  const st=document.getElementById("status"); st.hidden=false; st.textContent="Loading your holdings…";
+  try{ await sb.rpc("aktie_claim_start"); }catch(_){}
+  await load();
+  st.hidden=true;
+}
+async function load(){
+  const [h,e]=await Promise.all([
+    sb.from("aktie_holdings").select("*"),
+    sb.from("aktie_events").select("ts,date,holding,text").order("ts",{ascending:false}).limit(40)
+  ]);
+  if(h.error){ const st=document.getElementById("status"); st.hidden=false; st.textContent="Couldn't load holdings. Reload the page to try again."; return; }
+  holdings={}; (h.data||[]).forEach(r=>{holdings[r.id]=fromRow(r)});
+  events=e.data||[];
+  render();
+}
+
+/* ---------- render ---------- */
+function render(){
+  const list = Object.values(holdings);
+  const sum = list.reduce((a,h)=>{a.inv+=h.invested;a.val+=h.value;a.real+=(h.realized||0);return a},{inv:0,val:0,real:0});
+  const gain = sum.val - sum.inv;
+  document.getElementById("summary").innerHTML = list.length ? `
+    <div><span class="label">Worth now</span><span class="big num">${kr(sum.val)}</span></div>
+    <div><span class="label">Money in</span><span class="big num">${kr(sum.inv)}</span></div>
+    <div><span class="label">Gain</span><span class="big num ${cls(gain)}">${krS(gain)}</span></div>
+    <div><span class="label">Gain on money in</span><span class="big num ${cls(gain)}">${sum.inv?pc(gain/sum.inv):"–"}</span>${sum.real?`<span class="sub">Realized ${krS(sum.real)}</span>`:""}</div>` : "";
+  const accts = [...new Set(list.map(h=>h.account))].sort((a,b)=>{
+    const ia=ACCT_ORDER.indexOf(a), ib=ACCT_ORDER.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib) || a.localeCompare(b)});
+  document.getElementById("accounts").innerHTML = accts.map(a=>{
+    const hs = list.filter(h=>h.account===a).sort((x,y)=>y.value-x.value);
+    const inv = hs.reduce((s,h)=>s+h.invested,0), val = hs.reduce((s,h)=>s+h.value,0), g=val-inv;
+    return `<section class="acct">
+      <div class="acct-head"><h2>${esc(a)}</h2>
+        <span class="totals num">${kr(val)} · <span class="${cls(g)}">${krS(g)} (${inv?pc(g/inv):"–"})</span></span>
+        <button class="small" type="button" data-bulk="${esc(a)}">Update all values</button></div>
+      <div class="table">
+        <div class="row head"><span>Holding</span><span class="r">Money in</span><span class="r">Worth</span><span class="r">Gain</span><span class="r">Growth</span><span></span></div>
+        ${hs.map(h=>{const d=derive(h);return `
+        <div class="row item" data-id="${esc(h.id)}" tabindex="0" role="button" aria-label="${esc(h.name)} actions">
+          <div class="name-cell" style="min-width:0"><div class="name">${esc(h.name)}</div><span class="sub">${h.ccy?esc(h.ccy):""}</span></div>
+          <div class="r num"><span class="mlabel">Money in</span>${kr(h.invested)}</div>
+          <div class="r num"><span class="mlabel">Worth</span>${kr(h.value)}</div>
+          <div class="r num ${cls(d.gain)}"><span class="mlabel">Gain</span>${krS(d.gain)}<div class="sub ${cls(d.gain)}">${pc(d.gainPct)}</div></div>
+          <div class="r num ${cls(d.growth)}"><span class="mlabel">Growth since tracking</span>${pc(d.growth)}</div>
+          <div class="chev">›</div>
+        </div>`}).join("")}
+      </div></section>`}).join("") || `<div class="table"><div class="empty">No holdings yet. Tap <b>Add holding</b> to enter the first one with what you paid and what it's worth now.</div></div>`;
+  const lw = document.getElementById("logWrap");
+  lw.hidden = !events.length;
+  document.getElementById("log").innerHTML = events.slice(0,25).map(e=>`<div><span>${esc(e.text)}</span><span class="muted num">${esc(e.date)}</span></div>`).join("");
+}
+
+/* ---------- sheets ---------- */
+function openSheet(html, onMount){
+  const root=document.getElementById("sheetRoot");
+  root.innerHTML=`<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
+  root.querySelector("#scrim").addEventListener("click",e=>{if(e.target.id==="scrim")closeSheet()});
+  root.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",closeSheet));
+  onMount && onMount(root.querySelector(".sheet"));
+  const f=root.querySelector("input,select"); f&&f.focus();
+}
+function closeSheet(){document.getElementById("sheetRoot").innerHTML=""}
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeSheet()});
+
+async function save(h, text){
+  const {error}=await sb.from("aktie_holdings").upsert(toRow(h));
+  if(error) throw new Error("Couldn't save. Check your connection and try again.");
+  await sb.from("aktie_events").insert({user_id:uid,ts:Date.now(),date:today(),holding:h.id,text});
+  await load();
+}
+
+function holdingSheet(h){
+  const d=derive(h);
+  openSheet(`
+    <div><span class="label">${esc(h.account)}</span><h3>${esc(h.name)}</h3></div>
+    <div class="stats">
+      <div><span class="label">Money in</span><span class="num">${kr(h.invested)}</span></div>
+      <div><span class="label">Worth</span><span class="num">${kr(h.value)}</span></div>
+      <div><span class="label">Gain</span><span class="num ${cls(d.gain)}">${krS(d.gain)} · ${pc(d.gainPct)}</span></div>
+      <div><span class="label">Growth since tracking</span><span class="num ${cls(d.growth)}">${pc(d.growth)}</span></div>
+      ${h.realized?`<div><span class="label">Realized from sales</span><span class="num ${cls(h.realized)}">${krS(h.realized)}</span></div>`:""}
+      <div><span class="label">Last updated</span><span class="num">${esc(h.updated||"–")}</span></div>
+    </div>
+    <div class="btns">
+      <button class="primary" type="button" data-act="value">Update value</button>
+      <button type="button" data-act="buy">I bought more</button>
+      <button type="button" data-act="sell">I sold some</button>
+    </div>
+    <div class="btns end"><button class="small danger" type="button" id="rm">Remove holding</button><button class="small" type="button" data-close>Close</button></div>`,
+  s=>{
+    s.querySelector('[data-act="value"]').onclick=()=>valueSheet(h);
+    s.querySelector('[data-act="buy"]').onclick=()=>flowSheet(h,"buy");
+    s.querySelector('[data-act="sell"]').onclick=()=>flowSheet(h,"sell");
+    const rm=s.querySelector("#rm");
+    rm.onclick=async()=>{
+      if(rm.dataset.armed){
+        await sb.from("aktie_holdings").delete().eq("id",h.id);
+        await sb.from("aktie_events").insert({user_id:uid,ts:Date.now(),date:today(),holding:h.id,text:`Removed ${h.name} (${h.account})`});
+        closeSheet(); await load();
+      } else { rm.dataset.armed="1"; rm.textContent="Tap again to remove"; }
+    };
+  });
+}
+
+function valueSheet(h){
+  openSheet(`<h3>Update value · ${esc(h.name)}</h3>
+    <div class="field"><label for="v">Total value of the holding now (the Värde column in Avanza, not the price per share)</label><input id="v" inputmode="decimal" value="${Math.round(h.value)}"></div>
+    <div class="preview" id="pv"></div><div class="err" id="er"></div>
+    <div class="btns end"><button type="button" data-close>Cancel</button><button class="primary" type="button" id="ok">Save</button></div>`,
+  s=>{
+    const v=s.querySelector("#v"), pv=s.querySelector("#pv");
+    const upd=()=>{const n=parseKr(v.value); if(!(n>=0)){pv.textContent="";return}
+      const d=derive({...h,value:n}); pv.innerHTML=`Gain <b class="${cls(d.gain)}">${krS(d.gain)} (${pc(d.gainPct)})</b> · growth <b class="${cls(d.growth)}">${pc(d.growth)}</b>`};
+    v.oninput=upd; upd();
+    s.querySelector("#ok").onclick=async()=>{
+      const n=parseKr(v.value); if(!(n>=0)){s.querySelector("#er").textContent="Enter the value in kronor, for example 6 497.";return}
+      try{ await save({...h,value:n},`${h.name}: value ${kr(h.value)} → ${kr(n)}`); closeSheet(); }catch(e){s.querySelector("#er").textContent=e.message}
+    };
+  });
+}
+
+function flowSheet(h,kind){
+  const buy=kind==="buy";
+  openSheet(`<h3>${buy?"Bought more":"Sold some"} · ${esc(h.name)}</h3>
+    <div class="field"><label for="vb">Total value of your whole ${esc(h.name)} holding in this account right before the ${buy?"buy":"sale"} (the Värde column in Avanza, not the price per share)</label><input id="vb" inputmode="decimal" value="${Math.round(h.value)}"></div>
+    <div class="field"><label for="am">${buy?"Amount spent, incl. courtage (kr)":"Amount received after courtage (kr)"}</label><input id="am" inputmode="decimal" placeholder="0"></div>
+    <div class="preview">Growth up to the ${buy?"buy":"sale"} is locked in first, so the new money doesn't change the percentage.</div><div class="err" id="er"></div>
+    <div class="btns end"><button type="button" data-close>Cancel</button><button class="primary" type="button" id="ok">Save</button></div>`,
+  s=>{
+    s.querySelector("#ok").onclick=async()=>{
+      const vb=parseKr(s.querySelector("#vb").value), am=parseKr(s.querySelector("#am").value), er=s.querySelector("#er");
+      if(!(vb>=0)||!(am>0)){er.textContent="Fill in both amounts in kronor.";return}
+      if(!buy && am>vb){er.textContent="You can't sell for more than the holding is worth. Check the value before the sale.";return}
+      const twr=(h.twr||1)*(h.lastValue>0?vb/h.lastValue:1);
+      let n={...h,twr};
+      if(buy){ n.invested=h.invested+am; n.value=vb+am; n.lastValue=vb+am; }
+      else{ const costSold=vb>0?h.invested*am/vb:0; n.realized=(h.realized||0)+am-costSold; n.invested=h.invested-costSold; n.value=vb-am; n.lastValue=vb-am; }
+      try{ await save(n, buy?`${h.name}: bought for ${kr(am)}`:`${h.name}: sold for ${kr(am)} (realized ${krS(n.realized-(h.realized||0))})`); closeSheet(); }
+      catch(e){er.textContent=e.message}
+    };
+  });
+}
+
+function bulkSheet(acct){
+  const hs=Object.values(holdings).filter(h=>h.account===acct).sort((a,b)=>b.value-a.value);
+  openSheet(`<h3>Update values · ${esc(acct)}</h3>
+    ${hs.map(h=>`<div class="field"><label for="b-${esc(h.id)}">${esc(h.name)}</label><input id="b-${esc(h.id)}" inputmode="decimal" value="${Math.round(h.value)}"></div>`).join("")}
+    <div class="err" id="er"></div>
+    <div class="btns end"><button type="button" data-close>Cancel</button><button class="primary" type="button" id="ok">Save all</button></div>`,
+  s=>{
+    s.querySelector("#ok").onclick=async()=>{
+      const er=s.querySelector("#er");
+      try{
+        for(const h of hs){ const n=parseKr(s.querySelector("#b-"+CSS.escape(h.id)).value);
+          if(n>=0 && Math.round(n)!==Math.round(h.value)) await save({...h,value:n},`${h.name}: value ${kr(h.value)} → ${kr(n)}`); }
+        closeSheet();
+      }catch(e){er.textContent=e.message}
+    };
+  });
+}
+
+function addSheet(){
+  const accts=[...new Set([...ACCT_ORDER,...Object.values(holdings).map(h=>h.account)])];
+  openSheet(`<h3>Add holding</h3>
+    <div class="field"><label for="ac">Account</label><select id="ac">${accts.map(a=>`<option>${esc(a)}</option>`).join("")}<option value="__new">New account…</option></select></div>
+    <div class="field" id="naw" hidden><label for="na">New account name</label><input id="na"></div>
+    <div class="field"><label for="nm">Name</label><input id="nm" placeholder="e.g. Volvo B"></div>
+    <div class="field"><label for="iv">Amount spent, incl. courtage (kr)</label><input id="iv" inputmode="decimal"></div>
+    <div class="field"><label for="vl">Worth now (kr), leave empty if just bought</label><input id="vl" inputmode="decimal"></div>
+    <div class="err" id="er"></div>
+    <div class="btns end"><button type="button" data-close>Cancel</button><button class="primary" type="button" id="ok">Add</button></div>`,
+  s=>{
+    const ac=s.querySelector("#ac"); ac.onchange=()=>{s.querySelector("#naw").hidden=ac.value!=="__new"};
+    s.querySelector("#ok").onclick=async()=>{
+      const er=s.querySelector("#er");
+      const account = ac.value==="__new" ? s.querySelector("#na").value.trim() : ac.value;
+      const name=s.querySelector("#nm").value.trim(), inv=parseKr(s.querySelector("#iv").value);
+      const vRaw=s.querySelector("#vl").value.trim(), val=vRaw?parseKr(vRaw):inv;
+      if(!account||!name||!(inv>0)||!(val>=0)){er.textContent="Fill in account, name and the amount spent.";return}
+      let id=slug(account)+"--"+slug(name); while(holdings[id]) id+="-2";
+      try{ await save({id,account,name,invested:inv,value:val,lastValue:val,twr:1,realized:0,since:today()},`Added ${name} (${account}) for ${kr(inv)}`); closeSheet(); }
+      catch(e){er.textContent=e.message}
+    };
+  });
+}
+
+document.getElementById("addBtn").onclick=addSheet;
+document.getElementById("accounts").addEventListener("click",e=>{
+  const b=e.target.closest("[data-bulk]"); if(b){bulkSheet(b.dataset.bulk);return}
+  const r=e.target.closest(".row.item"); if(r&&holdings[r.dataset.id]) holdingSheet(holdings[r.dataset.id]);
+});
+document.getElementById("accounts").addEventListener("keydown",e=>{
+  if((e.key==="Enter"||e.key===" ")&&e.target.matches(".row.item")){e.preventDefault();holdingSheet(holdings[e.target.dataset.id])}
+});
+
+(async()=>{
+  const {data}=await sb.auth.getSession();
+  if(data.session) start(data.session); else { setMode(false); showAuth(); }
+})();
+</script>
+</body>
+</html>
